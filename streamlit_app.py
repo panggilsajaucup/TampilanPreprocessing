@@ -1,99 +1,86 @@
-import pandas as pd
+# Install Streamlit di terminal jika belum diinstal:
+# pip install streamlit
+
 import streamlit as st
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeClassifier, export_text
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report, confusion_matrix
 
-# Fungsi untuk memproses dataset PKPA
-def process_pkpa(file):
-    try:
-        # Membaca sheet 'Rekap'
-        excel_file = pd.ExcelFile(file)
-        if "Rekap" in excel_file.sheet_names:
-            df = pd.read_excel(file, sheet_name="Rekap", usecols="C,D,E,T,AC", skiprows=1)
-            df.columns = ["Kode Progdi", "nim", "nama", "pekerjaan", "ketereratan"]
+# ====================== Fungsi Pendukung ======================
 
-            # Menghapus baris dengan missing values atau jika kolom D tidak berisi 9 karakter
-            df = df.dropna()
-            df = df[df['nim'].apply(lambda x: len(str(x)) == 9)]  # Memastikan nim memiliki 9 karakter
+# Transformasi data
+def transform_data(df):
+    df['lama studi'] = df['lama studi'].apply(lambda x: "Tepat Waktu" if x <= 4 else "Tidak Tepat")
+    df['ipk'] = df['ipk'].apply(lambda x: "Rendah" if x < 3 else ("Sedang" if 3 <= x <= 3.5 else "Tinggi"))
+    ketereratan_mapping = {1: "Sangat Erat", 2: "Erat", 3: "Cukup", 4: "Kurang", 5: "Tidak"}
+    df['ketereratan'] = df['ketereratan'].map(ketereratan_mapping)
+    return df
 
-            # Menghapus baris yang berisi 01, 02, 03 pada kolom C
-            df = df[~df['Kode Progdi'].isin(['01', '02', '03'])]
-            
-            return df
-        else:
-            st.error(f"Sheet 'Rekap' tidak ditemukan dalam file {file.name}")
-            return None
-    except Exception as e:
-        st.error(f"Error saat memproses {file.name}: {e}")
-        return None
+# Data preparation
+def prepare_data(df, features, target):
+    X = pd.get_dummies(df[features])  # Encoding categorical variables
+    y = df[target]
+    return train_test_split(X, y, test_size=0.3, random_state=42)
 
-# Fungsi untuk memproses dataset BAAK
-def process_baak(file):
-    try:
-        excel_file = pd.ExcelFile(file)
-        processed_data_baak = []
-        for sheet in excel_file.sheet_names:
-            df = pd.read_excel(file, sheet_name=sheet, usecols="B,C,E,F", skiprows=1)
-            df.columns = ["nim", "nama", "ipk", "lama studi"]
-            df = df.dropna()
-            df = df[~df['nim'].apply(lambda x: str(x)[4:6] in ['01', '02', '03'])]
-            processed_data_baak.append(df)
-        return pd.concat(processed_data_baak, ignore_index=True)
-    except Exception as e:
-        st.error(f"Error saat memproses {file.name}: {e}")
-        return None
+# Model training and evaluation
+def evaluate_model(model, X_train, X_test, y_train, y_test):
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    st.write("### Classification Report")
+    st.text(classification_report(y_test, y_pred))
+    st.write("### Confusion Matrix")
+    st.write(confusion_matrix(y_test, y_pred))
 
-# Fungsi untuk menggabungkan kedua dataset berdasarkan kolom 'nim'
-def join_data(df_pkpa, df_baak):
-    if df_pkpa is not None and df_baak is not None:
-        # Melakukan join berdasarkan kolom 'nim'
-        joined_df = pd.merge(df_pkpa, df_baak, on="nim", how="inner")
+# ====================== Streamlit App ======================
 
-        # Memilih kolom yang diinginkan: ipk, lama studi, ketereratan
-        filtered_df = joined_df[["ipk", "lama studi", "ketereratan"]]
+st.title("Pengolahan Dataset & Analisis Algoritma Data Mining")
+st.write("Unggah dataset Excel dan lakukan analisis menggunakan algoritma Decision Tree, Random Forest, dan SVM.")
 
-        # Menghapus baris di mana kolom 'ketereratan' bernilai 0
-        filtered_df = filtered_df[filtered_df["ketereratan"] != 0]
+# Upload dataset
+uploaded_file = st.file_uploader("Unggah File Excel", type=["xls", "xlsx"])
+if uploaded_file:
+    # Read and process Excel
+    df = pd.read_excel(uploaded_file)
+    st.write("### Data Awal")
+    st.dataframe(df.head())
 
-        return filtered_df
-    else:
-        st.error("Tidak ada data yang cukup untuk dilakukan join.")
-        return None
+    # Transform and display data
+    df = transform_data(df)
+    st.write("### Data Setelah Transformasi")
+    st.dataframe(df.head())
 
-# Streamlit app layout
-st.title("Data Preprocessing for PKPA and BAAK")
+    # Select target and features
+    target = st.selectbox("Pilih Kolom Target (Ketereratan)", df.columns)
+    features = st.multiselect("Pilih Kolom Fitur", [col for col in df.columns if col != target])
 
-st.sidebar.header("Upload Files")
+    if target and features:
+        # Prepare data
+        X_train, X_test, y_train, y_test = prepare_data(df, features, target)
 
-# File Upload
-uploaded_pkpa = st.sidebar.file_uploader("Upload PKPA File", type=["xlsx", "xls"])
-uploaded_baak = st.sidebar.file_uploader("Upload BAAK File", type=["xlsx", "xls"])
+        # Select algorithm
+        algorithm = st.selectbox("Pilih Algoritma", ["Decision Tree", "Random Forest", "SVM"])
 
-# Process and Display Data
-if uploaded_pkpa and uploaded_baak:
-    st.write("Memproses Data PKPA...")
-    df_pkpa = process_pkpa(uploaded_pkpa)
+        if algorithm == "Decision Tree":
+            st.write("### Analisis Decision Tree")
+            model = DecisionTreeClassifier(random_state=42)
+            evaluate_model(model, X_train, X_test, y_train, y_test)
+            st.text(export_text(model, feature_names=X_train.columns.tolist()))
 
-    st.write("Memproses Data BAAK...")
-    df_baak = process_baak(uploaded_baak)
+        elif algorithm == "Random Forest":
+            st.write("### Analisis Random Forest")
+            model = RandomForestClassifier(random_state=42, n_estimators=100)
+            evaluate_model(model, X_train, X_test, y_train, y_test)
+            st.write("### Fitur Penting")
+            feature_importances = model.feature_importances_
+            st.write({name: importance for name, importance in zip(X_train.columns, feature_importances)})
 
-    st.write("Melakukan Join Data PKPA dan BAAK berdasarkan kolom 'nim'...")
-    result_df = join_data(df_pkpa, df_baak)
+        elif algorithm == "SVM":
+            kernel = st.selectbox("Pilih Kernel untuk SVM", ["linear", "rbf"])
+            st.write(f"### Analisis SVM ({kernel} kernel)")
+            model = SVC(kernel=kernel, random_state=42)
+            evaluate_model(model, X_train, X_test, y_train, y_test)
 
-    if result_df is not None:
-        st.write("Hasil Join:")
-        st.dataframe(result_df)  # Menampilkan hasil join
-
-        # Simpan hasil join
-        st.download_button(
-            label="Unduh Hasil Join sebagai CSV",
-            data=result_df.to_csv(index=False),
-            file_name="joined_data.csv",
-            mime="text/csv"
-        )
-        st.download_button(
-            label="Unduh Hasil Join sebagai XLSX",
-            data=result_df.to_excel(index=False, engine='xlsxwriter'),
-            file_name="joined_data.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-else:
-    st.info("Unggah file PKPA dan BAAK untuk memulai pemrosesan.")
+# Jalankan aplikasi ini dengan `streamlit run script_name.py`
