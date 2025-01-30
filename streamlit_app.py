@@ -40,7 +40,7 @@ def process_baak(file_name):
 
 # Mengunggah dataset melalui Streamlit
 uploaded_pkpa = st.file_uploader("Unggah Dataset PKPA", type=["xlsx"], accept_multiple_files=True)
-uploaded_baak = st.file_uploader("Unggah Dataset BAAK", type=["xlsx"], accept_multiple_files=True])
+uploaded_baak = st.file_uploader("Unggah Dataset BAAK", type=["xlsx"], accept_multiple_files=True)
 
 if uploaded_pkpa and uploaded_baak:
     df_pkpa = pd.concat([process_pkpa(f) for f in uploaded_pkpa], ignore_index=True)
