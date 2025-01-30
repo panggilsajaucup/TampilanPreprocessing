@@ -1,18 +1,20 @@
+pip install streamlit
 import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from imblearn.over_sampling import SMOTE
+from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import roc_curve, auc
-from sklearn.preprocessing import label_binarize
 import matplotlib.pyplot as plt
+from google.colab import files
+from sklearn.preprocessing import label_binarize
 
-# Fungsi untuk mengunggah dan memproses dataset PKPA dan BAAK
+# Fungsi untuk memproses dataset PKPA
 def process_pkpa(file_name):
     excel_file = pd.ExcelFile(file_name)
     if "Rekap" in excel_file.sheet_names:
@@ -25,6 +27,7 @@ def process_pkpa(file_name):
         return df[["nim", "ketereratan"]]
     return pd.DataFrame()
 
+# Fungsi untuk memproses dataset BAAK
 def process_baak(file_name):
     excel_file = pd.ExcelFile(file_name)
     processed_sheets = []
@@ -37,31 +40,40 @@ def process_baak(file_name):
         processed_sheets.append(df)
     return pd.concat(processed_sheets, ignore_index=True) if processed_sheets else pd.DataFrame()
 
-# Mengunggah dataset melalui Streamlit
-uploaded_pkpa = st.file_uploader("Unggah Dataset PKPA", type=["xlsx"], accept_multiple_files=True)
-uploaded_baak = st.file_uploader("Unggah Dataset BAAK", type=["xlsx"], accept_multiple_files=True)
+# Streamlit interface
+st.title("Aplikasi Data Mining untuk Ketereratan Kerja Lulusan")
 
+# Pilihan menu untuk algoritma
+menu = st.sidebar.selectbox("Pilih Algoritma", ["Decision Tree", "Random Forest", "SVM"])
+
+# Upload file
+uploaded_pkpa = st.file_uploader("Unggah Dataset PKPA", type=["xlsx"], accept_multiple_files=True)
+uploaded_baak = st.file_uploader("Unggah Dataset BAAK", type=["xlsx"], accept_multiple_files=True])
+
+# Proses dataset
 if uploaded_pkpa and uploaded_baak:
     df_pkpa = pd.concat([process_pkpa(f) for f in uploaded_pkpa], ignore_index=True)
     df_baak = pd.concat([process_baak(f) for f in uploaded_baak], ignore_index=True)
 
-    # Gabungkan dataset
     df_merged = df_pkpa.merge(df_baak, on="nim", how="left")
-
-    # Proses kategori dan data untuk analisis
+    
+    # Kategorisasi Lama Studi dan IPK
     df_merged["lama studi kategori"] = df_merged["lama studi"].apply(lambda x: 1 if x <= 4 else (2 if 4.1 <= x <= 4.5 else 3))
     df_merged["ipk kategori"] = df_merged["ipk"].apply(lambda x: 3 if x < 3 else (2 if 3 <= x <= 3.5 else 1))
     dataset = df_merged.drop(columns=["nim"])
-
-    # Pilih fitur dan filter sampel
+    
+    # Pilih fitur yang digunakan
     data_uji = dataset[['lama studi kategori', 'ipk kategori', 'ketereratan']].copy()
     data_uji.rename(columns={'lama studi kategori': 'lama studi', 'ipk kategori': 'ipk'}, inplace=True)
+    
+    # Ambil sampel maksimum 100 untuk setiap kategori ketereratan
     data_uji_filtered = data_uji.groupby('ketereratan', group_keys=False).apply(lambda x: x.sample(min(len(x), 100))).reset_index(drop=True)
-
-    # Label encoding
+    
+    # Label Encoding
     le_ipk = LabelEncoder()
     le_studi = LabelEncoder()
     le_ketereratan = LabelEncoder()
+
     data_uji_filtered['ipk'] = le_ipk.fit_transform(data_uji_filtered['ipk'].astype(str))
     data_uji_filtered['lama studi'] = le_studi.fit_transform(data_uji_filtered['lama studi'].astype(str))
     data_uji_filtered['ketereratan'] = le_ketereratan.fit_transform(data_uji_filtered['ketereratan'].astype(str))
@@ -75,61 +87,48 @@ if uploaded_pkpa and uploaded_baak:
     smote = SMOTE(random_state=42)
     X_resampled, y_resampled = smote.fit_resample(X_train, y_train)
 
-    # Normalisasi
+    # Normalisasi Data
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_resampled)
     X_test_scaled = scaler.transform(X_test)
-
-    # Pilihan menu algoritma
-    algorithm = st.selectbox("Pilih Algoritma", ("Decision Tree", "Random Forest", "SVM"))
-
-    # Model Decision Tree
-    if algorithm == "Decision Tree":
+    
+    # Pilihan model berdasarkan menu
+    if menu == "Decision Tree":
         model = DecisionTreeClassifier(random_state=42)
         model.fit(X_train_scaled, y_resampled)
         y_pred = model.predict(X_test_scaled)
-        accuracy = accuracy_score(y_test, y_pred)
-        st.write(f"Akurasi Model Decision Tree: {accuracy}")
-        st.write("Laporan Klasifikasi:\n", classification_report(y_test, y_pred, target_names=le_ketereratan.classes_))
-
-    # Model Random Forest
-    elif algorithm == "Random Forest":
+    elif menu == "Random Forest":
         model = RandomForestClassifier(random_state=42)
         model.fit(X_train_scaled, y_resampled)
         y_pred = model.predict(X_test_scaled)
-        accuracy = accuracy_score(y_test, y_pred)
-        st.write(f"Akurasi Model Random Forest: {accuracy}")
-        st.write("Laporan Klasifikasi:\n", classification_report(y_test, y_pred, target_names=le_ketereratan.classes_))
-
-    # Model SVM
-    elif algorithm == "SVM":
+    elif menu == "SVM":
         model = SVC(kernel='rbf', probability=True, random_state=42)
         model.fit(X_train_scaled, y_resampled)
         y_pred = model.predict(X_test_scaled)
-        accuracy = accuracy_score(y_test, y_pred)
-        y_proba = model.predict_proba(X_test_scaled)
-        roc_auc = roc_auc_score(y_test, y_proba, multi_class='ovr')
-        st.write(f"Akurasi Model SVM: {accuracy}")
-        st.write(f"ROC AUC Score: {roc_auc}")
-        st.write("Laporan Klasifikasi:\n", classification_report(y_test, y_pred, target_names=le_ketereratan.classes_))
 
-        # Plot ROC Curve
-        y_test_binarized = label_binarize(y_test, classes=np.unique(y))
-        fpr, tpr, roc_auc = {}, {}, {}
-        n_classes = len(le_ketereratan.classes_)
-        for i in range(n_classes):
-            fpr[i], tpr[i], _ = roc_curve(y_test_binarized[:, i], y_proba[:, i])
-            roc_auc[i] = auc(fpr[i], tpr[i])
-        
-        plt.figure(figsize=(8, 6))
-        colors = ['blue', 'red', 'green', 'orange', 'purple']
-        for i, color in zip(range(n_classes), colors):
-            plt.plot(fpr[i], tpr[i], color=color, lw=2,
-                     label=f'Kelas {le_ketereratan.classes_[i]} (AUC = {roc_auc[i]:.2f})')
-        plt.plot([0, 1], [0, 1], 'k--', lw=2)
-        plt.xlabel('False Positive Rate')
-        plt.ylabel('True Positive Rate')
-        plt.title('Kurva ROC-AUC untuk Model SVM')
-        plt.legend(loc='lower right')
-        plt.grid()
-        st.pyplot()
+    # Evaluasi Model
+    accuracy = accuracy_score(y_test, y_pred)
+    roc_auc = roc_auc_score(y_test, model.predict_proba(X_test_scaled), multi_class='ovr')
+
+    st.write(f"Akurasi Model {menu}:", accuracy)
+    st.write(f"ROC AUC Score:", roc_auc)
+    st.write("Laporan Klasifikasi:", classification_report(y_test, y_pred, target_names=le_ketereratan.classes_))
+
+    # Plot ROC Curve
+    y_test_binarized = label_binarize(y_test, classes=np.unique(y))
+    fpr, tpr, roc_auc = {}, {}, {}
+    for i in range(len(le_ketereratan.classes_)):
+        fpr[i], tpr[i], _ = roc_curve(y_test_binarized[:, i], model.predict_proba(X_test_scaled)[:, i])
+        roc_auc[i] = auc(fpr[i], tpr[i])
+
+    plt.figure(figsize=(8, 6))
+    for i, color in zip(range(len(le_ketereratan.classes_)), ['blue', 'red', 'green', 'orange', 'purple']):
+        plt.plot(fpr[i], tpr[i], color=color, lw=2, label=f'Kelas {le_ketereratan.classes_[i]} (AUC = {roc_auc[i]:.2f})')
+    plt.plot([0, 1], [0, 1], 'k--', lw=2)
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title(f'Kurva ROC-AUC untuk Model {menu}')
+    plt.legend(loc='lower right')
+    plt.grid()
+    st.pyplot(plt)
+
