@@ -1,6 +1,5 @@
 import matplotlib
 import pandas
-import scikit-learn
 import imbalanced-learn
 import streamlit as st
 import pandas as pd
