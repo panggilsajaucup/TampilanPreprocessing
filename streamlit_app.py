@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -11,7 +10,7 @@ from sklearn.svm import SVC
 from imblearn.over_sampling import SMOTE
 from sklearn.metrics import roc_curve, auc
 from sklearn.preprocessing import label_binarize
-from google.colab import files
+import matplotlib.pyplot as plt
 
 # Fungsi untuk mengunggah dan memproses dataset PKPA dan BAAK
 def process_pkpa(file_name):
